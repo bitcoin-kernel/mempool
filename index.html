@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mempool·watch — the public mempool, cross-checked in your browser</title>
+<meta name="description" content="Live mempool stats from independent witnesses, incoming datacarrier verified by hash, and per-pool dark-transaction rates: which mined txs never touched the public mempool.">
+<link rel="canonical" href="https://bitcoin-kernel.com/mempool/">
+<meta name="theme-color" content="#101712">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="mempool·watch">
+<meta property="og:title" content="mempool·watch — the public mempool, cross-checked in your browser">
+<meta property="og:description" content="Mempool witnesses compared, datacarrier verified by hash, and per-pool dark-transaction rates measured against consensus blocks.">
+<meta property="og:url" content="https://bitcoin-kernel.com/mempool/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23101712'/%3E%3Cpath d='M7 22h18M7 17h18M7 12h18' stroke='%232fbf6b' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='25' cy='9' r='3' fill='%23f7931a'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #101712; --nav-bg: #16221a; --panel-bg: #1b2a20; --stat-box-bg: #0b120d;
+    --border: #2b3d31; --fg: #ffffff; --muted: #8fa898; --link: #00ddff; --accent: #f7931a;
+    --good: #2fbf6b; --warn: #e0a80f; --bad: #dc3545;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
+  header.nav { display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap; padding: .85rem 1.4rem;
+    background: var(--nav-bg); border-bottom: 1px solid var(--border); }
+  header.nav .brand { font-size: 1.15rem; font-weight: 600; color: var(--fg); }
+  header.nav .brand .dot { color: var(--accent); }
+  header.nav .brand:hover { text-decoration: none; }
+  header.nav .sib { color: var(--muted); font-size: .8rem; }
+  header.nav .spacer { flex: 1; }
+  header.nav .status { font-size: .78rem; color: var(--muted); display: flex; align-items: center; gap: .45rem; }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .pulse.live { background: var(--good); box-shadow: 0 0 8px var(--good); animation: breathe 2.2s ease-in-out infinite; }
+  .pulse.err { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .wrap { padding: 1.5rem 1.4rem 3rem; max-width: 1100px; margin: 0 auto; }
+  .lede { color: var(--muted); font-size: .9rem; line-height: 1.55; max-width: 70ch; margin: 0 0 1.6rem; }
+  .stats { display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: 1.6rem; }
+  .stat { background: var(--stat-box-bg); border: 1px solid var(--border); border-radius: 8px; padding: .7rem 1rem; min-width: 128px; }
+  .stat .k { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .stat .v { font-size: 1.4rem; font-weight: 600; margin-top: .15rem; font-variant-numeric: tabular-nums; }
+  .stat .v small { display: block; font-size: .62rem; color: var(--muted); font-weight: 400; }
+  .stat .v.good { color: #46d585; } .stat .v.warn { color: var(--warn); }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 2rem 0 .8rem; font-weight: 600; }
+  .histo { display: flex; align-items: flex-end; gap: 2px; height: 90px; background: var(--stat-box-bg);
+    border: 1px solid var(--border); border-radius: 8px; padding: .6rem; }
+  .histo i { display: block; flex: 1; background: var(--good); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85; }
+  .histo i.hot { background: var(--accent); }
+  .histo-x { display: flex; justify-content: space-between; color: var(--muted); font-size: .68rem; margin-top: .3rem; font-variant-numeric: tabular-nums; }
+  table.t { width: 100%; border-collapse: collapse; font-size: .84rem; background: var(--panel-bg);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table.t th, table.t td { text-align: left; padding: .5rem .8rem; border-bottom: 1px solid var(--border); }
+  table.t th { color: var(--muted); font-weight: 500; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
+  table.t tr:last-child td { border-bottom: none; }
+  table.t td.num, table.t th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .76rem; }
+  .dim { color: var(--muted); } .ok { color: #46d585; } .over { color: #f4d06a; font-weight: 600; } .badtx { color: #ff8a94; }
+  .empty { color: var(--muted); font-size: .88rem; padding: 1.2rem; background: var(--panel-bg);
+    border: 1px dashed var(--border); border-radius: 10px; }
+  .note { color: var(--muted); font-size: .76rem; line-height: 1.5; margin-top: .6rem; }
+  label.tog { display: inline-flex; gap: .45rem; align-items: center; color: var(--muted); font-size: .78rem; cursor: pointer; }
+  footer { color: var(--muted); font-size: .78rem; line-height: 1.6; margin-top: 3rem;
+    border-top: 1px solid var(--border); padding-top: 1.2rem; }
+</style>
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="./">mempool<span class="dot">·</span>watch</a>
+  <span class="sib">a sibling of <a href="https://bitcoin-kernel.com/health/">block·health</a> &amp; <a href="https://bitcoin-kernel.com/forks/">fork·watch</a></span>
+  <span class="spacer"></span>
+  <span class="status"><span class="pulse" id="pulse"></span><span id="statusText">starting…</span></span>
+</header>
+
+<div class="wrap">
+  <p class="lede">
+    The mempool has no proof-of-work — it can't be verified, only <em>witnessed</em>. So this page compares
+    independent public witnesses, re-verifies every transaction it inspects by hashing the raw bytes, and — the
+    part only consensus can settle — measures each mined block against the mempool view that preceded it:
+    transactions that were <b>never seen publicly</b> before being mined, per pool. A WS-to-TCP bridge to a real
+    node (your own independent witness) is the roadmap.
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="k">pending txs</div><div class="v" id="s-count">—</div></div>
+    <div class="stat"><div class="k">mempool size</div><div class="v" id="s-vsize">—</div></div>
+    <div class="stat"><div class="k">pending fees</div><div class="v" id="s-fees">—</div></div>
+    <div class="stat"><div class="k">fastest fee</div><div class="v" id="s-fee">—</div></div>
+    <div class="stat" title="difference in pending-tx count between witnesses — small drift is normal propagation"><div class="k">witness drift</div><div class="v" id="s-drift">—</div></div>
+    <div class="stat" title="age of the last full mempool txid snapshot — the baseline for dark-tx detection"><div class="k">snapshot age</div><div class="v" id="s-snap">—</div></div>
+  </div>
+
+  <h2>fee histogram <span style="text-transform:none;letter-spacing:0">— pending vsize by fee rate (sat/vB)</span></h2>
+  <div class="histo" id="histo"></div>
+  <div class="histo-x" id="histo-x"></div>
+
+  <h2>witnesses</h2>
+  <div id="witnesses"><div class="empty">Waiting for the first stats…</div></div>
+
+  <h2>incoming datacarrier <span style="text-transform:none;letter-spacing:0">— sampled from the public stream, verified by hash</span></h2>
+  <div id="stream"><div class="empty">Watching for OP_RETURN-bearing transactions…</div></div>
+
+  <h2>dark transactions <span style="text-transform:none;letter-spacing:0">— mined without appearing in the public mempool, per pool</span></h2>
+  <div style="margin-bottom:.6rem"><label class="tog"><input type="checkbox" id="snap-toggle" checked> take full mempool snapshots (~3–5 MB every 2 min — required for dark-tx detection)</label></div>
+  <div id="dark"><div class="empty">Needs a snapshot before a block arrives — leave the page open across a block or two.</div></div>
+  <p class="note">Method: a full txid snapshot of the public mempool is taken every 2 minutes (plus the live sample stream);
+    when a block is mined, its txids (from the consensus block, coinbase excluded) are checked against everything seen before it.
+    "Dark" is an <b>upper bound</b> — a tx arriving in the final seconds before its block counts as unseen. Blocks arriving with
+    a stale snapshot are recorded without a dark measurement.</p>
+
+  <footer>
+    Stats are witness claims, not facts — that's why there are several. Transaction bytes and block membership are
+    verified by hash locally. No backend, no build step — static files on GitHub Pages.
+  </footer>
+</div>
+
+<script type="module">
+import { Codec } from './engine/codec/codec.js';
+import { scanTx, coinbaseTag, identifyPool } from './tx-scan.js';
+
+const MPS = 'https://mempool.space/api';
+const BSI = 'https://blockstream.info/api';
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const short = (h) => `${h.slice(0, 8)}…${h.slice(-4)}`;
+const ago = (ms) => { const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${(s / 3600).toFixed(1)}h ago`; };
+const setStatus = (text, cls) => { $('statusText').textContent = text; $('pulse').className = 'pulse' + (cls ? ' ' + cls : ''); };
+const jget = async (url, ms = 15000) => { const r = await fetch(url, { signal: AbortSignal.timeout(ms) }); if (!r.ok) throw new Error(`${url} -> ${r.status}`); return r.json(); };
+const tget = async (url, ms = 15000) => { const r = await fetch(url, { signal: AbortSignal.timeout(ms) }); if (!r.ok) throw new Error(`${url} -> ${r.status}`); return (await r.text()).trim(); };
+
+const jl = (n) => fetch(`./engine/schema/${n}.jsonld`).then((r) => r.json());
+const codec = new Codec(...await Promise.all([jl('core'), jl('proof'), jl('p2p')]));
+
+let cfg = {};
+try { cfg = JSON.parse(localStorage.getItem('mempoolwatch.config') || '{}'); } catch {}
+$('snap-toggle').checked = cfg.snapshots !== false;
+$('snap-toggle').addEventListener('change', () => {
+  cfg.snapshots = $('snap-toggle').checked ? undefined : false;
+  if (cfg.snapshots === undefined) delete cfg.snapshots;
+  try { localStorage.setItem('mempoolwatch.config', JSON.stringify(cfg)); } catch {}
+});
+
+// ---- witness stats + fee histogram ----
+const witnesses = new Map(); // name -> {count, vsize, totalFee, at}
+let feeHisto = null, fastestFee = null;
+async function pollStats() {
+  await Promise.allSettled([
+    (async () => {
+      const m = await jget(`${MPS}/mempool`);
+      witnesses.set('mempool.space', { count: m.count, vsize: m.vsize, totalFee: m.total_fee, at: Date.now() });
+      feeHisto = m.fee_histogram || null;
+      try { fastestFee = (await jget(`${MPS}/v1/fees/recommended`)).fastestFee; } catch {}
+    })(),
+    (async () => {
+      const m = await jget(`${BSI}/mempool`);
+      witnesses.set('blockstream.info', { count: m.count, vsize: m.vsize, totalFee: m.total_fee, at: Date.now() });
+    })(),
+  ]);
+  renderStats();
+}
+function renderStats() {
+  const ws = [...witnesses.values()];
+  if (!ws.length) return;
+  const main = witnesses.get('mempool.space') || ws[0];
+  $('s-count').textContent = fmt(main.count);
+  $('s-vsize').innerHTML = `${(main.vsize / 1e6).toFixed(1)} <small>vMB</small>`;
+  $('s-fees').innerHTML = `${(main.totalFee / 1e8).toFixed(2)} <small>BTC</small>`;
+  $('s-fee').innerHTML = fastestFee != null ? `${fmt(fastestFee)} <small>sat/vB</small>` : '—';
+  if (ws.length > 1) {
+    const drift = Math.abs(ws[0].count - ws[1].count);
+    const el = $('s-drift');
+    el.textContent = fmt(drift);
+    el.className = 'v' + (drift > Math.max(500, main.count * 0.05) ? ' warn' : ' good');
+  }
+  $('witnesses').innerHTML = `<table class="t"><tr><th>witness</th><th class="num">pending txs</th><th class="num">vsize</th><th class="num">total fees</th><th>seen</th></tr>
+    ${[...witnesses.entries()].map(([name, w]) => `<tr>
+      <td>${name}</td><td class="num">${fmt(w.count)}</td><td class="num">${(w.vsize / 1e6).toFixed(2)} vMB</td>
+      <td class="num">${(w.totalFee / 1e8).toFixed(3)} BTC</td><td class="dim">${ago(w.at)}</td></tr>`).join('')}</table>`;
+  if (feeHisto && feeHisto.length) {
+    // histogram arrives as [[feerate, vsize], …] from high fee to low
+    const bars = feeHisto.slice(0, 40);
+    const max = Math.max(...bars.map((b) => b[1]));
+    $('histo').innerHTML = bars.map((b) => `<i style="height:${Math.max(2, 100 * b[1] / max).toFixed(1)}%" class="${b[0] >= (fastestFee ?? 1e9) ? 'hot' : ''}" title="${b[0].toFixed(1)} sat/vB · ${(b[1] / 1e6).toFixed(2)} vMB"></i>`).join('');
+    $('histo-x').innerHTML = `<span>${bars[0][0].toFixed(0)} sat/vB</span><span>${bars[Math.floor(bars.length / 2)][0].toFixed(1)}</span><span>${bars[bars.length - 1][0].toFixed(1)}</span>`;
+  }
+  setStatus(`watching · ${fmt(main.count)} pending`, 'live');
+}
+
+// ---- incoming datacarrier sample stream (hash-verified) ----
+const seen = new Set();          // every public txid we've observed this session
+const inspected = new Set();     // txids already fetched for the stream
+const stream = [];               // [{txid, verified, opreturns, nonStd, maxData, feerate, ts}]
+async function pollRecent() {
+  let recent;
+  try { recent = await jget(`${MPS}/mempool/recent`); } catch { return; }
+  let fetched = 0;
+  for (const r of recent) {
+    if (!/^[0-9a-f]{64}$/.test(r.txid)) continue;
+    seen.add(r.txid);
+    if (inspected.has(r.txid) || fetched >= 5) continue;
+    inspected.add(r.txid); fetched++;
+    try {
+      const hex = await tget(`${MPS}/tx/${r.txid}/hex`);
+      const tx = codec.decode('Transaction', hex);
+      const verified = codec.txid(tx) === r.txid; // the bytes ARE the claim
+      const s = scanTx(tx);
+      if (s.opreturns > 0) {
+        stream.unshift({ txid: r.txid, verified, ...s, feerate: r.fee && r.vsize ? r.fee / r.vsize : null, ts: Date.now() });
+        if (stream.length > 30) stream.length = 30;
+        renderStream();
+      }
+    } catch { /* dropped from mempool between listing and fetch — fine */ }
+  }
+  if (inspected.size > 5000) { const drop = [...inspected].slice(0, 2500); drop.forEach((t) => inspected.delete(t)); }
+}
+function renderStream() {
+  if (!stream.length) return;
+  $('stream').innerHTML = `<table class="t"><tr><th>tx</th><th class="num">OP_RETURNs</th><th class="num">largest payload</th><th class="num">fee rate</th><th>standard?</th><th>seen</th></tr>
+    ${stream.map((s) => `<tr>
+      <td class="mono"><a href="https://mempool.guide/tx/${s.txid}" target="_blank" rel="noopener">${short(s.txid)}</a>${s.verified ? '' : ' <span class="badtx" title="bytes did not hash to the claimed txid">✕ hash mismatch</span>'}</td>
+      <td class="num">${s.opreturns}</td>
+      <td class="num ${s.maxData > 80 ? 'over' : ''}">${fmt(s.maxData)} B</td>
+      <td class="num">${s.feerate != null ? s.feerate.toFixed(1) + ' s/vB' : '—'}</td>
+      <td>${s.nonStd ? `<span class="over">✗ ${s.nonStd} over 80/83 B</span>` : '<span class="ok">✓ within 80/83 B</span>'}</td>
+      <td class="dim">${ago(s.ts)}</td></tr>`).join('')}</table>
+    <p class="note">A sample, not a firehose — the public "recent" feed surfaces ~10 txs at a time; only OP_RETURN-bearing ones are shown.</p>`;
+}
+
+// ---- full-mempool snapshots (baseline for dark-tx detection) ----
+let snapshotAt = 0;
+async function pollSnapshot() {
+  if ($('snap-toggle').checked === false) { $('s-snap').textContent = 'off'; return; }
+  try {
+    const txids = await jget(`${MPS}/mempool/txids`, 30000);
+    for (const t of txids) seen.add(t);
+    snapshotAt = Date.now();
+  } catch { /* keep the previous baseline */ }
+  renderSnap();
+}
+function renderSnap() {
+  $('s-snap').textContent = snapshotAt ? ago(snapshotAt) : ($('snap-toggle').checked ? '…' : 'off');
+}
+
+// ---- dark transactions: consensus blocks vs the prior public view ----
+let darkLedger = {};
+try { darkLedger = JSON.parse(localStorage.getItem('mempoolwatch.dark') || '{}'); } catch {}
+function saveDark() {
+  const keys = Object.keys(darkLedger);
+  if (keys.length > 500) keys.map((k) => [k, darkLedger[k][0]]).sort((a, b) => a[1] - b[1])
+    .slice(0, keys.length - 500).forEach(([k]) => delete darkLedger[k]);
+  try { localStorage.setItem('mempoolwatch.dark', JSON.stringify(darkLedger)); } catch {}
+}
+async function pollBlocks() {
+  let blocks;
+  try { blocks = await jget(`${MPS}/blocks`); } catch { return; }
+  for (const b of blocks.slice(0, 3)) {
+    if (!/^[0-9a-f]{64}$/.test(b.id) || darkLedger[b.id]) continue;
+    const snapFresh = snapshotAt && (Date.now() - snapshotAt) < 240000;
+    try {
+      const [txids, txs] = await Promise.all([jget(`${MPS}/block/${b.id}/txids`), jget(`${MPS}/block/${b.id}/txs`)]);
+      const pool = identifyPool(coinbaseTag(txs[0]?.vin?.[0]?.scriptsig || ''));
+      let unseen = null;
+      if (snapFresh) {
+        unseen = 0;
+        for (let i = 1; i < txids.length; i++) if (!seen.has(txids[i])) unseen++; // coinbase excluded
+      }
+      darkLedger[b.id] = [b.height, pool, txids.length - 1, unseen, snapFresh ? Math.round((Date.now() - snapshotAt) / 1000) : null, Date.now()];
+      for (const t of txids) seen.delete(t); // mined — keep the baseline lean
+      saveDark();
+      renderDark();
+    } catch { /* explorer hiccup — retry next poll */ }
+  }
+}
+function renderDark() {
+  const entries = Object.values(darkLedger).sort((a, b) => b[0] - a[0]);
+  if (!entries.length) return;
+  const measured = entries.filter((e) => e[3] != null);
+  const pools = new Map();
+  for (const e of measured) {
+    const name = e[1] || 'unrecognised';
+    const p = pools.get(name) || { blocks: 0, txs: 0, unseen: 0 };
+    p.blocks++; p.txs += e[2]; p.unseen += e[3];
+    pools.set(name, p);
+  }
+  const league = [...pools.entries()].map(([name, p]) => ({ name, ...p, pct: p.txs ? 100 * p.unseen / p.txs : 0 }))
+    .sort((a, b) => b.pct - a.pct || b.unseen - a.unseen);
+  $('dark').innerHTML = `
+    ${league.length ? `<table class="t" style="margin-bottom:1rem"><tr><th>pool</th><th class="num">blocks measured</th><th class="num">txs</th><th class="num">dark txs</th><th class="num">dark rate</th></tr>
+      ${league.map((l) => `<tr><td><b>⛏ ${l.name}</b></td><td class="num">${fmt(l.blocks)}</td><td class="num">${fmt(l.txs)}</td>
+        <td class="num"><b>${fmt(l.unseen)}</b></td><td class="num ${l.pct > 2 ? 'over' : ''}">${l.pct.toFixed(2)}%</td></tr>`).join('')}</table>` : ''}
+    <table class="t"><tr><th>block</th><th>pool</th><th class="num">txs</th><th class="num">dark</th><th>snapshot</th><th>seen</th></tr>
+    ${entries.slice(0, 12).map((e) => `<tr>
+      <td class="mono">#${fmt(e[0])}</td><td>${e[1] ? '⛏ ' + e[1] : '<span class="dim">unrecognised</span>'}</td>
+      <td class="num">${fmt(e[2])}</td>
+      <td class="num">${e[3] != null ? `<b>${fmt(e[3])}</b> <span class="dim">(${(100 * e[3] / Math.max(1, e[2])).toFixed(1)}%)</span>` : '<span class="dim">no baseline</span>'}</td>
+      <td class="dim">${e[4] != null ? e[4] + 's old' : '—'}</td><td class="dim">${ago(e[5])}</td></tr>`).join('')}</table>`;
+}
+
+// ---- go ----
+setStatus('fetching mempool…');
+renderDark();
+pollStats(); pollRecent(); pollSnapshot().then(pollBlocks);
+setInterval(pollStats, 15000);
+setInterval(pollRecent, 10000);
+setInterval(pollSnapshot, 120000);
+setInterval(pollBlocks, 30000);
+setInterval(renderSnap, 5000);
+</script>
+</body>
+</html>
